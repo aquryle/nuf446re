@@ -1,0 +1,101 @@
+初期化
+
+#define RX_BUF_SIZE 300
+
+UART_HandleTypeDef huart2;
+DMA_HandleTypeDef hdma_usart2_rx;
+
+uint8_t rx_buf[RX_BUF_SIZE];
+
+void MX_USART2_UART_Init(void)
+{
+    huart2.Instance = USART2;
+    huart2.Init.BaudRate = 115200;
+    huart2.Init.WordLength = UART_WORDLENGTH_8B;
+    huart2.Init.StopBits = UART_STOPBITS_1;
+    huart2.Init.Parity = UART_PARITY_NONE;
+    huart2.Init.Mode = UART_MODE_TX_RX;
+    huart2.Init.HwFlowCtl = UART_HWCONTROL_NONE;
+    huart2.Init.OverSampling = UART_OVERSAMPLING_16;
+    if (HAL_UART_Init(&huart2) != HAL_OK)
+    {
+        Error_Handler();
+    }
+
+    // DMAで受信開始（最大長）
+    HAL_UART_Receive_DMA(&huart2, rx_buf, RX_BUF_SIZE);
+
+    // IDLE割り込み有効化
+    __HAL_UART_ENABLE_IT(&huart2, UART_IT_IDLE);
+}
+
+
+受信処理
+void USART2_IRQHandler(void)
+{
+    HAL_UART_IRQHandler(&huart2);
+
+    // IDLE割り込みチェック
+    if (__HAL_UART_GET_FLAG(&huart2, UART_FLAG_IDLE) != RESET)
+    {
+        __HAL_UART_CLEAR_IDLEFLAG(&huart2);
+
+        // DMAを一旦止める
+        HAL_UART_DMAStop(&huart2);
+
+        // 受信済みサイズを計算
+        uint16_t received_size = RX_BUF_SIZE - __HAL_DMA_GET_COUNTER(huart2.hdmarx);
+
+        // ここでパケット処理
+        process_packet(rx_buf, received_size);
+
+        // DMA再開
+        HAL_UART_Receive_DMA(&huart2, rx_buf, RX_BUF_SIZE);
+    }
+}
+
+パケット処理例
+void process_packet(uint8_t *buf, uint16_t len)
+{
+    if (len < 2) return; // サイズ情報すらない場合
+
+    uint8_t packet_size = buf[1];  // 2バイト目にサイズが入っている
+
+    if (packet_size <= len)
+    {
+        // packet_size バイト分が有効データ
+        // ここでアプリ側に渡す
+    }
+    else
+    {
+        // サイズ不一致 → エラーハンドリング
+    }
+}
+
+受信開始
+// DMA受信開始（最大サイズ）
+HAL_UART_Receive_DMA(&huart2, rx_buf, RX_BUF_SIZE);
+
+// IDLE割り込み有効化
+__HAL_UART_ENABLE_IT(&huart2, UART_IT_IDLE);
+
+CubeMX が生成する stm32f4xx_it.c 内の USART2 IRQ Handler:
+void USART2_IRQHandler(void)
+{
+    HAL_UART_IRQHandler(&huart2);
+
+    if (__HAL_UART_GET_FLAG(&huart2, UART_FLAG_IDLE) != RESET)
+    {
+        __HAL_UART_CLEAR_IDLEFLAG(&huart2);
+
+        // DMA停止して受信サイズ取得
+        HAL_UART_DMAStop(&huart2);
+        uint16_t received_size = RX_BUF_SIZE - __HAL_DMA_GET_COUNTER(huart2.hdmarx);
+
+        process_packet(rx_buf, received_size);
+
+        // DMA再開
+        HAL_UART_Receive_DMA(&huart2, rx_buf, RX_BUF_SIZE);
+    }
+}
+
