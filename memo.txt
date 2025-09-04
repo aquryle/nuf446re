@@ -99,3 +99,81 @@ void USART2_IRQHandler(void)
     }
 }
 
+
+
+
+
+
+
+
+import ctypes
+
+class MyDLL:
+    """
+    DLLラッパークラス（テンプレート）
+    - 出力バッファ型関数は Python の str に変換
+    - 数値型関数はそのまま返す
+    - 関数定義を一括管理するので、関数が増えても簡単に追加可能
+    """
+    def __init__(self, path: str):
+        self.dll = ctypes.CDLL(path)
+
+        # 関数定義リスト： ("関数名", [引数型], 戻り値型, "buffer" or "number")
+        self.functions = [
+            ("GetStatus", [ctypes.c_char_p, ctypes.c_int], ctypes.c_int, "buffer"),
+            ("MakeMessage", [ctypes.c_char_p, ctypes.c_int], ctypes.c_int, "buffer"),
+            ("CalcSum", [ctypes.c_int, ctypes.c_int], ctypes.c_int, "number"),
+            # ↓ ここに残り27個くらいの関数を同じ形式で追加
+            # ("関数名", [argtypes], restype, "buffer" or "number"),
+        ]
+
+        # DLL関数の型を自動設定
+        self._setup_functions()
+
+    def _setup_functions(self):
+        for name, argtypes, restype, _ in self.functions:
+            func = getattr(self.dll, name)
+            func.argtypes = argtypes
+            func.restype = restype
+
+    # ラッパーメソッド自動生成用ヘルパー
+    def _call_buffer_func(self, name: str, bufsize: int = 256):
+        buf = ctypes.create_string_buffer(bufsize)
+        func = getattr(self.dll, name)
+        ret = func(buf, bufsize)
+        return buf.value.decode("ascii"), ret
+
+    def _call_number_func(self, name: str, *args):
+        func = getattr(self.dll, name)
+        return func(*args)
+
+    # 個別ラッパー（Python側で呼びやすくする）
+    def get_status(self, bufsize: int = 256):
+        return self._call_buffer_func("GetStatus", bufsize)
+
+    def make_message(self, bufsize: int = 256):
+        return self._call_buffer_func("MakeMessage", bufsize)
+
+    def calc_sum(self, a: int, b: int):
+        return self._call_number_func("CalcSum", a, b)
+
+
+
+
+
+
+from mydll_wrapper import MyDLL
+
+if __name__ == "__main__":
+    mydll = MyDLL(r"C:\path\to\your.dll")
+
+    msg, ret = mydll.get_status()
+    print("GetStatus:", msg, "(戻り値:", ret, ")")
+
+    msg, ret = mydll.make_message()
+    print("MakeMessage:", msg, "(戻り値:", ret, ")")
+
+    result = mydll.calc_sum(10, 32)
+    print("CalcSum:", result)
+
+
